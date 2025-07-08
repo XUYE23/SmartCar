@@ -1,5 +1,5 @@
-# 04_solve_problem_3.py
-# Solves problem 3: finds the optimal heading sequence for minimal mileage.
+# 04_solve_problem_3.py (Corrected version with full DP logic and fixed indentation)
+# Solves problem 3 by correctly modeling the state transitions.
 
 import numpy as np
 import pandas as pd
@@ -7,8 +7,39 @@ from tqdm import tqdm
 import config
 import utils
 
+def build_turn_logic():
+    """
+    Builds a lookup table for vehicle movement rules based on Attachment 3.
+    Returns a dictionary: logic[h_prev][(dx, dy)] = list_of_possible_h_curr
+    """
+    logic = {h: {} for h in config.HEADINGS}
+    
+    for h_prev in config.HEADINGS:
+        # 1. Straight move
+        s_rad = np.deg2rad(h_prev)
+        s_dx, s_dy = int(round(np.sin(s_rad))), int(round(np.cos(s_rad)))
+        s_h_curr_options = [(h_prev - 45 + 360) % 360, h_prev, (h_prev + 45 + 360) % 360]
+        logic[h_prev][(s_dx, s_dy)] = s_h_curr_options
+
+        # 2. Left-turning move
+        h_turn_l = (h_prev - 45 + 360) % 360
+        l_rad = np.deg2rad(h_turn_l)
+        l_dx, l_dy = int(round(np.sin(l_rad))), int(round(np.cos(l_rad)))
+        l_h_curr_options = [(h_turn_l - 45 + 360) % 360, h_turn_l]
+        logic[h_prev][(l_dx, l_dy)] = l_h_curr_options
+            
+        # 3. Right-turning move
+        h_turn_r = (h_prev + 45 + 360) % 360
+        r_rad = np.deg2rad(h_turn_r)
+        r_dx, r_dy = int(round(np.sin(r_rad))), int(round(np.cos(r_rad)))
+        r_h_curr_options = [h_turn_r, (h_turn_r + 45 + 360) % 360]
+        logic[h_prev][(r_dx, r_dy)] = r_h_curr_options
+            
+    return logic
+
+
 def main():
-    print("\n--- Starting Step 4: Path Optimization (Problem 3) ---")
+    print("\n--- Starting Step 4: Path Optimization (Problem 3 - Correct DP) ---")
 
     X_COL_NAME = '栅格x坐标'
     Y_COL_NAME = '栅格y坐标'
@@ -19,15 +50,7 @@ def main():
     except FileNotFoundError as e:
         print(f"Error: A required file was not found: {e.filename}")
         return
-    except KeyError as e:
-        print(f"Column name error: {e}. Please check if the Excel column names match the code.")
-        print(f"Actual path columns: {repr(path_df.columns.tolist())}")
-        return
 
-    if len(path_df) < 2:
-        print("Error: Path file must contain at least a start point and one waypoint.")
-        return
-        
     start_point_coords = path_df.iloc[0][[X_COL_NAME, Y_COL_NAME]].values
     waypoints_df = path_df.iloc[1:].copy()
     waypoints_coords = waypoints_df[[X_COL_NAME, Y_COL_NAME]].values
@@ -38,86 +61,70 @@ def main():
     dp = np.full((n, H), float('inf'))
     backpointer = np.full((n, H), -1, dtype=int)
 
+    turn_logic = build_turn_logic()
+    
     # --- Initialization for the P5 -> L1 move ---
     p_start = start_point_coords
     p_L1 = waypoints_coords[0]
-
-    delta_L_init = abs(p_L1[0] - p_start[0]) + abs(p_L1[1] - p_start[1])
-    omega_init = utils.get_omega(delta_L_init, 0) # Assume delta_theta=0 for the first move
-    cost_init = omega_init * config.CELLSIZE
+    dx_init, dy_init = p_L1[0] - p_start[0], p_L1[1] - p_start[1]
+    
+    # Assumption: The first move's turn penalty is zero (delta_theta = 0).
+    delta_L_init = abs(dx_init) + abs(dy_init)
+    cost_init = utils.get_omega(delta_L_init, 0) * config.CELLSIZE
     
     if cost_init == float('inf'):
-        print(f"Error: The initial move from P5 {p_start} to L1 {p_L1} is invalid (delta_L={delta_L_init}).")
+        print(f"Error: The initial move from P5 {p_start} to L1 {p_L1} is invalid.")
         return
 
-    # --- FIX: Define a precise mapping from move vector to required heading ---
-    move_to_heading = {
-        (0, 1): 0, (1, 1): 45, (1, 0): 90, (1, -1): 135,
-        (0, -1): 180, (-1, -1): 225, (-1, 0): 270, (-1, 1): 315
-    }
-
-    # Populate the first row of dp table (costs to arrive at L1)
-    # The heading must match the direction of the first move
-    dx_init, dy_init = p_L1[0] - p_start[0], p_L1[1] - p_start[1]
-    if (dx_init, dy_init) in move_to_heading:
-        h_init = move_to_heading[(dx_init, dy_init)]
-        h_init_idx = config.HEADINGS.index(h_init)
-        dp[0, h_init_idx] = cost_init
-    # --- END OF FIX ---
-
-    # DP iterations for the rest of the path (L1 -> L2, L2 -> L3, ...)
-    for i in tqdm(range(1, n), desc="Optimizing Path P5-P6"):
-        prev_p = waypoints_coords[i-1] # e.g., L1
-        curr_p = waypoints_coords[i]   # e.g., L2
-
-        dx, dy = curr_p[0] - prev_p[0], curr_p[1] - prev_p[1]
-        delta_L = abs(dx) + abs(dy)
-        
-        # A given move (dx, dy) determines a UNIQUE required heading
-        if (dx, dy) not in move_to_heading:
-            # This move is impossible (e.g., dx=2), so this row in dp will remain inf
-            # This will be caught by the final check
-            continue
+    # To get to L1, we must have made the move (dx_init, dy_init).
+    # We must find all h_prev at P5 that could have resulted in this move.
+    # For each such h_prev, we find its possible h_curr options at L1.
+    for h_prev in config.HEADINGS:
+        # Check if the required initial move is a valid one from this h_prev
+        if (dx_init, dy_init) in turn_logic[h_prev]:
+            # If so, get the list of possible next headings at L1
+            possible_h_curr_list = turn_logic[h_prev][(dx_init, dy_init)]
             
-        h_curr = move_to_heading[(dx, dy)]
-        h_curr_idx = config.HEADINGS.index(h_curr)
+            for h_curr in possible_h_curr_list:
+                h_curr_idx = config.HEADINGS.index(h_curr)
+                # The cost is the same for all initial possibilities
+                dp[0, h_curr_idx] = cost_init
         
-        # We only need to calculate costs for this one possible current heading.
-        # We iterate through all possible previous headings to find the cheapest way to get here.
+    # --- Corrected DP iterations ---
+    for i in tqdm(range(1, n), desc="Optimizing Path (Correct DP)"):
+        prev_p = waypoints_coords[i-1]
+        curr_p = waypoints_coords[i]
+        required_dx, required_dy = curr_p[0] - prev_p[0], curr_p[1] - prev_p[1]
+        
         for h_prev_idx, h_prev in enumerate(config.HEADINGS):
             if dp[i-1, h_prev_idx] == float('inf'):
                 continue
 
-            min_angle_diff = min(abs(h_curr - h_prev), 360 - abs(h_curr - h_prev))
-            if min_angle_diff > 90:
-                continue
-
-            omega = utils.get_omega(delta_L, min_angle_diff)
-            if omega == float('inf'):
-                # This case should not be reached if delta_L is always 1 or 2
+            if (required_dx, required_dy) not in turn_logic[h_prev]:
                 continue
             
-            cost = omega * config.CELLSIZE
-            new_total_cost = dp[i-1, h_prev_idx] + cost
+            possible_h_curr_list = turn_logic[h_prev][(required_dx, required_dy)]
+            
+            for h_curr in possible_h_curr_list:
+                h_curr_idx = config.HEADINGS.index(h_curr)
+                
+                delta_L = abs(required_dx) + abs(required_dy)
+                angle_diff = abs(h_curr - h_prev)
+                delta_theta = min(angle_diff, 360 - angle_diff)
+                
+                cost = utils.get_omega(delta_L, delta_theta) * config.CELLSIZE
+                new_total_cost = dp[i-1, h_prev_idx] + cost
 
-            if new_total_cost < dp[i, h_curr_idx]:
-                dp[i, h_curr_idx] = new_total_cost
-                backpointer[i, h_curr_idx] = h_prev_idx
-    
-    # Backtracking
+                if new_total_cost < dp[i, h_curr_idx]:
+                    dp[i, h_curr_idx] = new_total_cost
+                    backpointer[i, h_curr_idx] = h_prev_idx
+
+    # Backtracking (this part remains the same)
     optimal_headings = np.zeros(n, dtype=int)
     min_final_cost = np.min(dp[n-1, :])
     
     if min_final_cost == float('inf'):
         print("Error: No valid path could be found through the waypoints.")
-        # Add some debug info to find where it failed
-        for i in range(n):
-            if np.all(dp[i,:] == float('inf')):
-                print(f"Path became impossible at step {i+1} (from L{i} to L{i+1}).")
-                p_prev = waypoints_coords[i-1] if i > 0 else start_point_coords
-                p_curr = waypoints_coords[i]
-                print(f"Move from {p_prev} to {p_curr} could not be completed from any previous valid state.")
-                break
         return
         
     last_h_idx = np.argmin(dp[n-1, :])
@@ -127,15 +134,13 @@ def main():
         last_h_idx = backpointer[i + 1, last_h_idx]
         optimal_headings[i] = config.HEADINGS[last_h_idx]
 
-    # Create and save results
-    result_df = waypoints_df.copy() # Use copy to avoid SettingWithCopyWarning
+    result_df = waypoints_df.copy()
     result_df['无人车车头方向(度)'] = optimal_headings
-    result_df.to_excel(config.PROBLEM3_RESULTS_PATH, index=False)
+    result_df.to_excel("problem3_results_correct_dp.xlsx", index=False)
     
-    print("\n--- Problem 3 Results ---")
+    print("\n--- Problem 3 Results (Correct DP) ---")
     print(f"Optimal path found with minimum mileage: {min_final_cost:.4f} meters")
-    print(f"Optimal heading sequence saved to '{config.PROBLEM3_RESULTS_PATH}'")
-
+    print(f"Optimal heading sequence saved to 'problem3_results_correct_dp.xlsx'")
 
 if __name__ == "__main__":
     main()
