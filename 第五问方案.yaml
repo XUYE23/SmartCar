@@ -1,0 +1,56 @@
+--- FINAL LOGISTICS PLAN ---
+
+Warehouse: C2
+  - Assigned Fronts: ['Z2']
+  - Total Demand: 675.0 kg / 800 kg
+  - Deployed Vehicles: 2
+    - Vehicle 1: Route: C2 -> Z2 -> C2
+      - Load: 500.0 kg, Time: 1.56 hrs, Battery: 42.0%
+    - Vehicle 2: Route: C2 -> Z2 -> C2
+      - Load: 175.0 kg, Time: 1.56 hrs, Battery: 42.0%
+
+Warehouse: C3
+  - Assigned Fronts: ['Z6']
+  - Total Demand: 675.0 kg / 800 kg
+  - Deployed Vehicles: 2
+    - Vehicle 1: Route: C3 -> Z6 -> C3
+      - Load: 500.0 kg, Time: 2.56 hrs, Battery: 66.1%
+    - Vehicle 2: Route: C3 -> Z6 -> C3
+      - Load: 175.0 kg, Time: 2.56 hrs, Battery: 66.1%
+
+Warehouse: C4
+  - Assigned Fronts: ['Z3']
+  - Total Demand: 427.5 kg / 800 kg
+  - Deployed Vehicles: 1
+    - Vehicle 1: Route: C4 -> Z3 -> C4
+      - Load: 427.5 kg, Time: 2.78 hrs, Battery: 74.8%
+
+Warehouse: C6
+  - Assigned Fronts: ['Z4']
+  - Total Demand: 675.0 kg / 800 kg
+  - Deployed Vehicles: 2
+    - Vehicle 1: Route: C6 -> Z4 -> C6
+      - Load: 500.0 kg, Time: 1.87 hrs, Battery: 45.3%
+    - Vehicle 2: Route: C6 -> Z4 -> C6
+      - Load: 175.0 kg, Time: 1.87 hrs, Battery: 45.3%
+
+Warehouse: C8
+  - Assigned Fronts: ['Z9']
+  - Total Demand: 675.0 kg / 800 kg
+  - Deployed Vehicles: 2
+    - Vehicle 1: Route: C8 -> Z9 -> C8
+      - Load: 500.0 kg, Time: 2.62 hrs, Battery: 67.0%
+    - Vehicle 2: Route: C8 -> Z9 -> C8
+      - Load: 175.0 kg, Time: 2.62 hrs, Battery: 67.0%
+
+Warehouse: C9
+  - Assigned Fronts: ['Z7']
+  - Total Demand: 427.5 kg / 500 kg
+  - Deployed Vehicles: 1
+    - Vehicle 1: Route: C9 -> Z7 -> C9
+      - Load: 427.5 kg, Time: 1.74 hrs, Battery: 46.7%
+
+--- OVERALL PLAN SUMMARY ---
+Activated Warehouses: ['C2', 'C3', 'C4', 'C6', 'C8', 'C9'] (6 in total)
+Total Vehicles Deployed: 10
+Makespan (Max Time): 2.78 hours
